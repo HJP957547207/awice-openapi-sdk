@@ -2,6 +2,8 @@
 
 [English](./README.en.md) | 简体中文
 
+> 代码同时托管在 [GitHub](https://github.com/HJP957547207/awice-openapi-sdk)（主仓库）和 [Gitee](https://gitee.com/baige95/awice-openapi-sdk)（国内镜像），两边内容保持同步。国内访问 GitHub 不畅时用 Gitee 即可。
+
 国际物流运价查询 API 的官方 SDK。**海运整柜（FCL）、海运拼箱（LCL）、国际空运、国际快递、FBA 头程**五类实时运价，外加港口、机场、船公司、航空公司、国家五类基础数据字典，一次对接接进你自己的 TMS、ERP 或官网询价页。
 
 - 官网：<https://www.5688.cn/open>

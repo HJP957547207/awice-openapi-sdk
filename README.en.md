@@ -2,6 +2,8 @@
 
 English | [简体中文](./README.md)
 
+> Hosted on [GitHub](https://github.com/HJP957547207/awice-openapi-sdk) (primary), mirrored to [Gitee](https://gitee.com/baige95/awice-openapi-sdk) for users in mainland China. Both stay in sync.
+
 Official SDKs for the Awice (5688.cn) international logistics rate API. Query live **FCL ocean freight, LCL consolidation, air freight, international courier and Amazon FBA first-mile rates**, plus reference data for seaports, airports, carriers, airlines and countries — and plug them straight into your TMS, ERP or quoting page.
 
 - Website: <https://www.5688.cn/open>
