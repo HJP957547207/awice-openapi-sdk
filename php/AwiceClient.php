@@ -147,6 +147,52 @@ class AwiceClient
 
     // ───────────────────────── 基础数据字典 ─────────────────────────
 
+    /** 港口对船期查询（返回标准分页 data 数组，空结果免费）。 */
+    public function schedule(array $params)
+    {
+        return $this->post('/openapi/v1/schedule/search', $params);
+    }
+
+    /** 凭本应用船期搜索结果中的航次标识获取详情。 */
+    public function scheduleDetail($scheduleId)
+    {
+        return $this->post('/openapi/v1/schedule/detail', ['schedule_id' => $scheduleId]);
+    }
+
+    /** 免费下单；client_order_no 必填，重试保留原单号和内容。 */
+    public function createOceanOrder(array $params)
+    {
+        return $this->post('/openapi/v1/orders/ocean/create', $params);
+    }
+
+    /** 免费下单；client_order_no 必填，重试保留原单号和内容。 */
+    public function createAirOrder(array $params)
+    {
+        return $this->post('/openapi/v1/orders/air/create', $params);
+    }
+
+    /** 免费下单；client_order_no 必填，重试保留原单号和内容。 */
+    public function createExpressOrder(array $params)
+    {
+        return $this->post('/openapi/v1/orders/express/create', $params);
+    }
+
+    /** 免费下单；client_order_no 必填，重试保留原单号和内容。 */
+    public function createFbaOrder(array $params)
+    {
+        return $this->post('/openapi/v1/orders/fba/create', $params);
+    }
+
+    public function orderDetail(array $params = [])
+    {
+        return $this->post('/openapi/v1/orders/detail', $params);
+    }
+
+    public function orderOptions(array $params = [])
+    {
+        return $this->get('/openapi/v1/orders/options', $params);
+    }
+
     /** 港口字典。keyword 模糊搜索，返回 code / 中英文名 / 国家 */
     public function ports(array $query = [])
     {

@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .env
 vendor/
+*.class
+.java-test/

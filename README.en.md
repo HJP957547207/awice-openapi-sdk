@@ -4,7 +4,7 @@ English | [简体中文](./README.md)
 
 > Hosted on [GitHub](https://github.com/HJP957547207/awice-openapi-sdk) (primary), mirrored to [Gitee](https://gitee.com/baige95/awice-openapi-sdk) for users in mainland China. Both stay in sync.
 
-Official SDKs for the Awice (5688.cn) international logistics rate API. Query live **FCL ocean freight, LCL consolidation, air freight, international courier and Amazon FBA first-mile rates**, plus reference data for seaports, airports, carriers, airlines and countries — and plug them straight into your TMS, ERP or quoting page.
+Official SDKs for the Awice (5688.cn) international logistics rate API. Query live **FCL ocean freight, LCL consolidation, air freight, international courier and Amazon FBA first-mile rates**, plus sailing schedules, four logistics order types and reference data for seaports, airports, carriers, airlines and countries — and plug them straight into your TMS, ERP or quoting page.
 
 - Website: <https://www.5688.cn/open>
 - Docs: <https://www.5688.cn/open/docs/start>
@@ -12,14 +12,14 @@ Official SDKs for the Awice (5688.cn) international logistics rate API. Query li
 
 ## Why use the SDK
 
-- **Single file, zero dependencies.** PHP needs only the curl extension (PHP 7.1+); Python uses the standard library only (Python 3.7+). Drop one file into your project — no composer, no pip.
+- **Single file, zero dependencies.** PHP needs curl (PHP 7.1+); Python uses the standard library (3.7+); Java uses JDK libraries (11+, including 17 and 21). Copy one file into your project; no Composer, pip or Maven dependency required.
 - **Signing handled for you.** The two things people get wrong about HMAC-SHA256 here (the signed PATH excludes the `/api` prefix; the body must be MD5'd and sent as the *same* JSON string) are already taken care of.
 - **Automatic backoff on rate limits.** When you hit the QPS ceiling the SDK retries according to the server's `Retry-After`, so batch jobs don't need their own retry loop.
 - **Error messages that tell you what to do.** "Insufficient credits", for example, points you at the console where the free trial pack is waiting — instead of leaving you staring at a numeric code.
 
 ## Quick start
 
-Create an app in the [console](https://www.5688.cn/user/openapi/apps) to get your AppKey / AppSecret, **and click "claim free trial pack" while you're there** — without it every call is rejected. This is by far the most common thing new users get stuck on.
+Create an app in the [console](https://www.5688.cn/user/openapi/apps) to get your AppKey / AppSecret. Claim the free trial pack for rate queries that require credits. Ping and the order APIs do not require a credit balance; orders require a verified customer.
 
 ### PHP
 
@@ -58,9 +58,22 @@ for rate in res["list"]:
           f'transit {rate["transit"]["days"]}d', rate["valid_until"])
 ```
 
+### Java (JDK 11+)
+
+Copy [java/AwiceClient.java](./java/AwiceClient.java); no third-party dependencies.
+
+```java
+AwiceClient client = new AwiceClient(key, secret);
+AwiceClient.ApiResponse res = client.fcl(
+    java.util.Map.of("pol", "CNSHA", "pod", "USLAX", "limit", 10));
+System.out.println(AwiceClient.Json.stringify(res.getData()));
+```
+
+[Java setup, responses and errors](./java/README.en.md). Java returns ApiResponse with the full envelope; PHP/Python single-file clients return data directly.
+
 ## Endpoints
 
-Ten public endpoints in total — this table is all of them. **Anything not listed here does not exist.**
+Available endpoints: **Anything not listed here does not exist.**
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -69,6 +82,8 @@ Ten public endpoints in total — this table is all of them. **Anything not list
 | `air()` | `POST /openapi/v1/freight/air/search` | Air freight rates |
 | `express()` | `POST /openapi/v1/freight/express/search` | International courier / line-haul rates |
 | `fba()` | `POST /openapi/v1/freight/fba/search` | Amazon FBA first-mile rates |
+| `schedule()` | `POST /openapi/v1/schedule/search` | Sailing schedules by port pair, carrier and ETD range |
+| `schedule_detail()` / `scheduleDetail()` | `POST /openapi/v1/schedule/detail` | Details from a schedule ID obtained by the same app |
 | `ports()` | `GET /openapi/v1/dict/port` | Seaport dictionary (UN/LOCODE) |
 | `airports()` | `GET /openapi/v1/dict/airport` | Airport dictionary (IATA) |
 | `carriers()` | `GET /openapi/v1/dict/carrier` | Ocean carrier dictionary |
@@ -77,7 +92,7 @@ Ten public endpoints in total — this table is all of them. **Anything not list
 | `popular()` | `GET /openapi/v1/dict/popular` | Common subset, for populating dropdowns |
 | `ping()` | `ANY /openapi/v1/ping` | Connectivity check, not billed |
 
-> There are currently **no** endpoints for vessel space, sailing schedules, cargo tracking, or orders/bookings/invoices. If you need those, leave a note on the website and it will be considered for the roadmap.
+> There are currently **no** endpoints for vessel space, cargo tracking or invoices. Four order types and own-order details are documented below. Contact us if you need additional endpoints.
 
 ## Specifying ports
 
@@ -162,3 +177,56 @@ You buy a plan, which grants credits; each call deducts credits based on the end
 ## License
 
 MIT
+
+## Sailing schedules and details
+
+Non-empty searches default to 1 credit per call with up to 50 records. Empty results are free. Each record has an app-bound `schedule_id` and `terminals`. Details default to no additional charge, configurable in the dashboard, and accept only an ID obtained by the same app. Missing fields are null; unavailable legs/port calls are []. Removed sailings return empty data.
+
+```python
+page = client.schedule(pol="CNSZX", pod="USLAX", carrier="COSCO", limit=50)
+rows = page.get("data", [])
+if rows:
+    detail = client.schedule_detail(rows[0]["schedule_id"])
+```
+
+```php
+$page = $client->schedule(["pol" => "CNSZX", "pod" => "USLAX", "limit" => 50]);
+if (!empty($page['data'])) {
+    $detail = $client->scheduleDetail($page['data'][0]['schedule_id']);
+}
+```
+
+Endpoints: POST /openapi/v1/schedule/search and POST /openapi/v1/schedule/detail.
+Reference: https://www.5688.cn/en/open/docs/schedule#detail
+
+## Logistics Order APIs (0 Credits)
+
+Four order types follow the website customer center workflow. Use the same
+/api/openapi/v1/ prefix and a verified website customer linked to your app.
+Creation, options and own-order details cost 0 credits and still require signing
+and rate limiting. Submission creates a real order awaiting operational processing.
+
+| PHP method | Python method | Java method | Relative path |
+| --- | --- | --- | --- |
+| createOceanOrder($payload) | create_ocean_order(**payload) | createOceanOrder(payload) | POST /orders/ocean/create |
+| createAirOrder($payload) | create_air_order(**payload) | createAirOrder(payload) | POST /orders/air/create |
+| createExpressOrder($payload) | create_express_order(**payload) | createExpressOrder(payload) | POST /orders/express/create |
+| createFbaOrder($payload) | create_fba_order(**payload) | createFbaOrder(payload) | POST /orders/fba/create |
+| orderOptions(['order_type'=>'ocean']) | order_options(order_type="ocean") | orderOptions(Map.of("order_type", "ocean")) | GET /orders/options |
+| orderDetail(['order_type'=>'ocean','client_order_no'=>'MY-ORDER-001']) | order_detail(order_type="ocean", client_order_no="MY-ORDER-001") | orderDetail(params) | POST /orders/detail |
+
+Fetch options before filling a payload. Ocean orders use the internal port
+dictionary code, while air orders use airport IATA codes. Contacts may be your
+contact IDs or inline objects. See [all parameters and four examples](https://www.5688.cn/open/docs/orders).
+
+client_order_no is required and unique per customer and order type (across apps).
+Retry with the same reference and payload to get the original order
+(replayed=true). A changed payload under the same reference returns HTTP409 /
+code1003. Do not generate a new reference after a timeout: query the original
+reference and retry the original payload. A new nonce/timestamp is generated by
+the SDK on each request.
+
+The PHP/Python single-file SDKs return data directly. Java returns ApiResponse,
+with getData() / getEnvelope() for data or the complete response. PHP/Python
+packaged SDKs return the full envelope. This source update does not publish a
+new package to public registries.

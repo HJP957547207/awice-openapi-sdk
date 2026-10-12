@@ -138,6 +138,36 @@ class AwiceClient:
 
     # ───────────────────────── 基础数据字典 ─────────────────────────
 
+    def schedule(self, **params: Any) -> Any:
+        """港口对船期；可传 carrier、etd_start/etd_end、page/limit。"""
+        return self.post("/openapi/v1/schedule/search", params)
+
+    def schedule_detail(self, schedule_id: str) -> Any:
+        """凭本应用船期搜索返回的 schedule_id 获取该航次详情。"""
+        return self.post("/openapi/v1/schedule/detail", {"schedule_id": schedule_id})
+
+    def create_ocean_order(self, **params: Any) -> Any:
+        """免费下单；client_order_no 必填，重试保留原单号和内容。"""
+        return self.post("/openapi/v1/orders/ocean/create", params)
+
+    def create_air_order(self, **params: Any) -> Any:
+        """免费下单；client_order_no 必填，重试保留原单号和内容。"""
+        return self.post("/openapi/v1/orders/air/create", params)
+
+    def create_express_order(self, **params: Any) -> Any:
+        """免费下单；client_order_no 必填，重试保留原单号和内容。"""
+        return self.post("/openapi/v1/orders/express/create", params)
+
+    def create_fba_order(self, **params: Any) -> Any:
+        """免费下单；client_order_no 必填，重试保留原单号和内容。"""
+        return self.post("/openapi/v1/orders/fba/create", params)
+
+    def order_detail(self, **params: Any) -> Any:
+        return self.post("/openapi/v1/orders/detail", params)
+
+    def order_options(self, **params: Any) -> Any:
+        return self.get("/openapi/v1/orders/options", params)
+
     def ports(self, **query: Any) -> Any:
         """港口字典。keyword 模糊搜索，返回 code / 中英文名 / 国家"""
         return self.get("/openapi/v1/dict/port", query)

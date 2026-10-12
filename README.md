@@ -4,7 +4,7 @@
 
 > 代码同时托管在 [GitHub](https://github.com/HJP957547207/awice-openapi-sdk)（主仓库）和 [Gitee](https://gitee.com/baige95/awice-openapi-sdk)（国内镜像），两边内容保持同步。国内访问 GitHub 不畅时用 Gitee 即可。
 
-国际物流运价查询 API 的官方 SDK。**海运整柜（FCL）、海运拼箱（LCL）、国际空运、国际快递、FBA 头程**五类实时运价，外加港口、机场、船公司、航空公司、国家五类基础数据字典，一次对接接进你自己的 TMS、ERP 或官网询价页。
+国际物流运价查询 API 的官方 SDK。**海运整柜（FCL）、海运拼箱（LCL）、国际空运、国际快递、FBA 头程**五类实时运价、船期查询与四类物流下单，外加港口、机场、船公司、航空公司、国家五类基础数据字典，一次对接接进你自己的 TMS、ERP 或官网询价页。
 
 - 官网：<https://www.5688.cn/open>
 - 文档：<https://www.5688.cn/open/docs/start>
@@ -12,14 +12,14 @@
 
 ## 特点
 
-- **单文件、零依赖**。PHP 版只要 curl 扩展（PHP 7.1+），Python 版只用标准库（Python 3.7+）。复制一个文件进项目就能用，不需要 composer 或 pip。
+- **单文件、零依赖**。PHP 版只要 curl 扩展（PHP 7.1+），Python 版只用标准库（Python 3.7+），Java 版使用 JDK 标准库（JDK 11+，兼容 17、21）。复制一个文件进项目就能用，不需要 composer、pip 或 Maven 依赖。
 - **签名自动处理**。HMAC-SHA256 签名里最容易错的几处（PATH 不含 `/api` 前缀、body 要用同一个 JSON 串算 MD5）已经封装好。
 - **限流自动退避**。撞到 QPS 上限时按服务端返回的 `Retry-After` 自动重试，批量跑数据不用自己写重试循环。
 - **错误提示说人话**。比如「积分不足」会直接告诉你去控制台哪里领免费额度，而不是让你对着一个错误码发呆。
 
 ## 快速开始
 
-先到[控制台](https://www.5688.cn/user/openapi/apps)创建应用拿到 AppKey / AppSecret，**并在控制台点一下「领取免费体验包」**——没领的话调用会直接被拒（这是新用户最常见的卡点）。
+先到[控制台](https://www.5688.cn/user/openapi/apps)创建应用拿到 AppKey / AppSecret。需要积分的查价接口可先领取免费体验包；ping 和下单接口不要求积分余额，下单须完成客户实名认证。
 
 ### PHP
 
@@ -61,9 +61,22 @@ for rate in res["list"]:
           f'航程 {rate["transit"]["days"]} 天', rate["valid_until"])
 ```
 
+### Java（JDK 11+）
+
+复制 [java/AwiceClient.java](./java/AwiceClient.java)，无需第三方依赖。
+
+```java
+AwiceClient client = new AwiceClient(key, secret);
+AwiceClient.ApiResponse res = client.fcl(
+    java.util.Map.of("pol", "CNSHA", "pod", "USLAX", "limit", 10));
+System.out.println(AwiceClient.Json.stringify(res.getData()));
+```
+
+[Java 运行示例、版本与异常说明](./java/README.md)。Java 返回 `ApiResponse`（保留完整响应）；PHP/Python 单文件客户端直接返回 `data`。
+
 ## 返回长什么样
 
-`fcl()` 返回的是剥掉 `code`/`msg` 外层之后的 `data`，结构如下（真实响应，非杜撰）：
+PHP/Python 单文件客户端的 `fcl()` 直接返回 `data`，Java 使用 `fcl(...).getData()` 获取同一结构（真实响应，非杜撰）：
 
 ```json
 {
@@ -96,7 +109,7 @@ for rate in res["list"]:
 
 ## 可用接口
 
-对外一共 10 个接口，下表就是全部——**没有的不会写在这里**。
+可用接口如下——**没有的不会写在这里**。
 
 | 方法 | 接口 | 说明 |
 |---|---|---|
@@ -105,6 +118,8 @@ for rate in res["list"]:
 | `air()` | `POST /openapi/v1/freight/air/search` | 国际空运运价 |
 | `express()` | `POST /openapi/v1/freight/express/search` | 国际快递 / 专线运价 |
 | `fba()` | `POST /openapi/v1/freight/fba/search` | FBA 头程运价 |
+| `schedule()` | `POST /openapi/v1/schedule/search` | 船期查询（港口对、船公司、ETD 日期范围） |
+| `schedule_detail()` / `scheduleDetail()` | `POST /openapi/v1/schedule/detail` | 同一应用的航次标识获取详情 |
 | `ports()` | `GET /openapi/v1/dict/port` | 港口字典 |
 | `airports()` | `GET /openapi/v1/dict/airport` | 机场字典 |
 | `carriers()` | `GET /openapi/v1/dict/carrier` | 船公司字典 |
@@ -113,7 +128,7 @@ for rate in res["list"]:
 | `popular()` | `GET /openapi/v1/dict/popular` | 常用数据集（做下拉框用） |
 | `ping()` | `ANY /openapi/v1/ping` | 连通性自检，不计费 |
 
-> 目前**没有**舱位、船期、货物轨迹、下单/订单/账单类接口。有这类需求可以到官网留言，会作为排期参考。
+> 目前**没有**舱位、货物轨迹和账单接口；四类下单与本人订单详情见下文。有这类需求可以到官网留言，会作为排期参考。
 
 ## 港口怎么传
 
@@ -191,3 +206,51 @@ client = AwiceClient(key, secret, timeout=90)
 ## License
 
 MIT
+
+## 船期查询与详情
+
+有结果的搜索默认每次 1 积分、最多 50 条，空结果免费。每条返回 `schedule_id` 和 `terminals`。详情默认不重复收费，后台可调整；只接受同一应用搜索返回的标识，不能跨应用使用。数据字段缺失为 null，分段/挂靠港缺失为 []；船期不代表舱位。详情查无 data=[]。
+
+```python
+page = client.schedule(pol="CNSZX", pod="USLAX", carrier="COSCO", limit=50)
+rows = page.get("data", [])
+if rows:
+    detail = client.schedule_detail(rows[0]["schedule_id"])
+    print(detail.get("legs", []) if detail else [])
+```
+
+```php
+$page = $client->schedule(["pol" => "CNSZX", "pod" => "USLAX", "limit" => 50]);
+if (!empty($page['data'])) {
+    $detail = $client->scheduleDetail($page['data'][0]['schedule_id']);
+}
+```
+
+接口：POST /openapi/v1/schedule/search、POST /openapi/v1/schedule/detail。
+文档：https://www.5688.cn/open/docs/schedule#detail
+
+## 四类物流下单（0 积分）
+
+沿用 /api/openapi/v1/，AppKey 绑定的官网客户须完成实名认证。
+四类下单、下单选项、本人订单详情固定免费，零积分余额可用，仍签名鉴权并限速。
+提交会生成真实订单，进入与官网相同的后台业务流程。
+
+| PHP 方法 | Python 方法 | Java 方法 | 相对路径 |
+| --- | --- | --- | --- |
+| createOceanOrder($payload) | create_ocean_order(**payload) | createOceanOrder(payload) | POST /orders/ocean/create |
+| createAirOrder($payload) | create_air_order(**payload) | createAirOrder(payload) | POST /orders/air/create |
+| createExpressOrder($payload) | create_express_order(**payload) | createExpressOrder(payload) | POST /orders/express/create |
+| createFbaOrder($payload) | create_fba_order(**payload) | createFbaOrder(payload) | POST /orders/fba/create |
+| orderOptions(['order_type'=>'ocean']) | order_options(order_type="ocean") | orderOptions(Map.of("order_type", "ocean")) | GET /orders/options |
+| orderDetail(['order_type'=>'ocean','client_order_no'=>'MY-ORDER-001']) | order_detail(order_type="ocean", client_order_no="MY-ORDER-001") | orderDetail(params) | POST /orders/detail |
+
+先取下单选项再填 payload。海运港口使用字典内部 code，空运使用机场 IATA 码。
+联系人可用自己的联系人 ID，或内嵌 company/contact/tel/address 对象。
+[完整参数与四类示例](https://www.5688.cn/open/docs/orders)。
+
+client_order_no 为必填外部单号，在同一客户、同一订单类型内唯一，跨应用共用。
+原单号、原有效参数重试返回原订单（replayed=true）；原单号改变内容返回 HTTP409 / code1003。
+超时后先按原单号查订单，再用原内容重试，避免换单号造成重复下单。SDK 每次请求自动生成新 nonce 和时间戳。
+
+PHP/Python 单文件 SDK 返回 data；Java 返回 ApiResponse，可用 getData() / getEnvelope() 获取业务数据或完整响应；PHP/Python 下载包返回完整 code/data/credit_used 响应。
+本次更新下载源码，不代表已向 Composer / PyPI 发布新版本。
