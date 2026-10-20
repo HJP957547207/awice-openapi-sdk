@@ -32,7 +32,7 @@ import java.util.Objects;
  * 仅对明确的 4001/4004 限流响应自动重试，网络失败不自动重试真实下单。
  */
 public final class AwiceClient {
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "1.1.0";
     public static final String DEFAULT_BASE_URL = "https://www.5688.cn/api";
     private final String appKey;
     private final String appSecret;
@@ -70,6 +70,7 @@ public final class AwiceClient {
                 .followRedirects(HttpClient.Redirect.NEVER).build();
     }
 
+    /** Preserves surcharges[].charge_unit / singleprice; see README for per-bill/container rules. */
     public ApiResponse fcl(Map<String, ?> params) throws IOException, InterruptedException {
         return post("/openapi/v1/freight/fcl/search", params);
     }
@@ -108,6 +109,15 @@ public final class AwiceClient {
     }
     public ApiResponse orderDetail(Map<String, ?> params) throws IOException, InterruptedException {
         return post("/openapi/v1/orders/detail", params);
+    }
+    public ApiResponse orderTracking(Map<String, ?> params) throws IOException, InterruptedException {
+        return post("/openapi/v1/orders/tracking", params);
+    }
+    public ApiResponse updateOrder(Map<String, ?> params) throws IOException, InterruptedException {
+        return post("/openapi/v1/orders/update", params);
+    }
+    public ApiResponse cancelOrder(Map<String, ?> params) throws IOException, InterruptedException {
+        return post("/openapi/v1/orders/cancel", params);
     }
     public ApiResponse ports(Map<String, ?> query) throws IOException, InterruptedException {
         return get("/openapi/v1/dict/port", query);

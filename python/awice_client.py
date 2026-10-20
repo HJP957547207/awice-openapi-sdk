@@ -30,7 +30,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 DEFAULT_BASE_URL = "https://www.5688.cn/api"
 
@@ -108,6 +108,8 @@ class AwiceClient:
     def fcl(self, **params: Any) -> Any:
         """海运整柜 FCL 运价
 
+        list[].surcharges 保留 charge_unit / singleprice；按票只计一次，计费规则见 README。
+
         :keyword pol: 起运港（必填）。支持 UN/LOCODE、中文名、英文名，如 CNSHA / 上海 / shanghai
         :keyword pod: 目的港（必填）
         :keyword carrier: 船公司（可选）
@@ -164,6 +166,18 @@ class AwiceClient:
 
     def order_detail(self, **params: Any) -> Any:
         return self.post("/openapi/v1/orders/detail", params)
+
+    def order_tracking(self, **params: Any) -> Any:
+        """Own-order saved tracking events; same selectors as order_detail, 0 credits."""
+        return self.post("/openapi/v1/orders/tracking", params)
+
+    def update_order(self, **params: Any) -> Any:
+        """Modify own pending/forecast order; submit changed fields in changes."""
+        return self.post("/openapi/v1/orders/update", params)
+
+    def cancel_order(self, **params: Any) -> Any:
+        """Void own pending order; repeating a void request is safe."""
+        return self.post("/openapi/v1/orders/cancel", params)
 
     def order_options(self, **params: Any) -> Any:
         return self.get("/openapi/v1/orders/options", params)

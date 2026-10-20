@@ -9,6 +9,8 @@
 - 官网：<https://www.5688.cn/open>
 - 文档：<https://www.5688.cn/open/docs/start>
 - 控制台：<https://www.5688.cn/user/openapi>
+- [Postman 集合（含 9 个订单接口）](./postman/awice-openapi.postman_collection.json)：导入后填写自己的应用凭据，创建/修改/作废会操作真实订单。
+- 当前源码版本：**1.1.0**，见[更新记录](./CHANGELOG.md)。
 
 ## 特点
 
@@ -107,6 +109,36 @@ PHP/Python 单文件客户端的 `fcl()` 直接返回 `data`，Java 使用 `fcl(
 `resolved` 会回显你传的原值和解析结果——传中文名时用它确认系统认成了哪个港口。
 `schedule.is_real` 为 `true` 表示是船公司真实船期，`false` 表示该条报价未关联具体航次。
 
+## FCL 附加费：按箱与按票
+
+`fcl()` 的 `list[].surcharges[]` 原样保留 `code`、`name`、`name_en`、`20GP`、`40GP`、`40HQ`、`currency`、`remark`，以及计费单位 `charge_unit` 和单票金额 `singleprice`。SDK 不会替你合并费用或计算订单应收。
+
+设按箱金额 `C = 20GP单价 × 20GP箱数 + 40GP单价 × 40GP箱数 + 40HQ单价 × 40HQ箱数`：
+
+| charge_unit | 计费方式 | 一票费用 |
+| --- | --- | --- |
+| `CONTAINER` | 按箱 | `C` |
+| `BILL` | 按票 | `singleprice`，只计一次，忽略旧柜型金额 |
+| `MIXED` | 按箱 + 按票 | `C + singleprice`，单票部分只计一次 |
+| `UNKNOWN` / 缺字段 / 不认识的值 | 单位不明确 | 停止自动计算，先确认计费方式 |
+
+示例（演示金额，不是当前报价）：
+
+```json
+[
+  {"code":"DOC","name":"文件费","name_en":"Documentation Fee","20GP":450,"40GP":450,"40HQ":450,"currency":"CNY","remark":"","charge_unit":"BILL","singleprice":450},
+  {"code":"THC","name":"码头费","name_en":"Terminal Handling Charge","20GP":908,"40GP":1362,"40HQ":1362,"currency":"CNY","remark":"","charge_unit":"CONTAINER","singleprice":0}
+]
+```
+
+2 个 20GP 箱：DOC 为 450 CNY，THC 为 1816 CNY；这两项合计 2266 CNY。历史按票费用可能在三个柜型中重复保存同一金额，不能再乘箱数；也不能因三个柜型金额相同就推断为按票。
+
+按 `currency` 分币种汇总。`prices` 是 USD 海运费，与附加费分列，不能直接与 CNY 等币种相加。未返回某项附加费不代表免费，也不保证包含目的港所有费用。
+
+PHP/Python 单文件 SDK 直接读取 `result["list"]`；Java 从 `response.getData()` 中读取 `list`（Map / List，金额为 BigDecimal）。官网 PHP/Python 分目录下载包保留完整响应，从 `result["data"]["list"]` 读取。
+
+[FCL 完整字段与限制](https://www.5688.cn/open/docs/fcl)
+
 ## 可用接口
 
 可用接口如下——**没有的不会写在这里**。
@@ -128,7 +160,7 @@ PHP/Python 单文件客户端的 `fcl()` 直接返回 `data`，Java 使用 `fcl(
 | `popular()` | `GET /openapi/v1/dict/popular` | 常用数据集（做下拉框用） |
 | `ping()` | `ANY /openapi/v1/ping` | 连通性自检，不计费 |
 
-> 目前**没有**舱位、货物轨迹和账单接口；四类下单与本人订单详情见下文。有这类需求可以到官网留言，会作为排期参考。
+> 目前**没有**舱位和任意单号轨迹接口；四类下单与本人订单详情见下文。有这类需求可以到官网留言，会作为排期参考。
 
 ## 港口怎么传
 
@@ -243,6 +275,9 @@ if (!empty($page['data'])) {
 | createFbaOrder($payload) | create_fba_order(**payload) | createFbaOrder(payload) | POST /orders/fba/create |
 | orderOptions(['order_type'=>'ocean']) | order_options(order_type="ocean") | orderOptions(Map.of("order_type", "ocean")) | GET /orders/options |
 | orderDetail(['order_type'=>'ocean','client_order_no'=>'MY-ORDER-001']) | order_detail(order_type="ocean", client_order_no="MY-ORDER-001") | orderDetail(params) | POST /orders/detail |
+| orderTracking(params) | order_tracking(**params) | orderTracking(params) | POST /orders/tracking |
+| updateOrder(params) | update_order(**params) | updateOrder(params) | POST /orders/update |
+| cancelOrder(params) | cancel_order(**params) | cancelOrder(params) | POST /orders/cancel |
 
 先取下单选项再填 payload。海运港口使用字典内部 code，空运使用机场 IATA 码。
 联系人可用自己的联系人 ID，或内嵌 company/contact/tel/address 对象。
@@ -254,3 +289,15 @@ client_order_no 为必填外部单号，在同一客户、同一订单类型内�
 
 PHP/Python 单文件 SDK 返回 data；Java 返回 ApiResponse，可用 getData() / getEnvelope() 获取业务数据或完整响应；PHP/Python 下载包返回完整 code/data/credit_used 响应。
 本次更新下载源码，不代表已向 Composer / PyPI 发布新版本。
+
+### 修改订单与取消（作废）
+
+两个接口固定免费（0积分），传 order_type 及 client_order_no 或 order_no。update 的 changes 为非空对象：未提交字段/明细保留，提交的对象/列表整体替换。仅待确认（0）/预报（1）订单可修改；仅待确认（0）订单可自助取消，取消后为作废（7）。重复相同修改或取消返回 replayed=true，不重复写操作日志或创建联系人。状态不允许时返回 HTTP409 / code1004。改单后重试原创建请求仅返回当前订单，不覆盖修改结果。
+
+### 订单详情账单
+
+orderDetail / order_detail 新增 data.bills：先核对本人订单，再仅返回开给当前客户、已核单/已核销的应收叶子账单。其他客户账单、应付、未核/反核、已拆母单/中间节点不返回。每张账单含账单号、账单/付款状态、原币种汇总、人民币参考金额和客户费用明细。拆分金额以子单为准，母单明细仅在同订单、同付款客户且为已核应收、金额对应时展示。无可见账单返回空数组，不返回内部备注、制单人、供应商和母单标识。已有SDK详情方法自动保留新增字段。
+
+### 本人订单轨迹
+
+POST `/api/openapi/v1/orders/tracking` 固定0积分，参数与订单详情一致：`order_type`及`client_order_no`或`order_no`（同时传时优先外部单号）。PHP/Java使用`orderTracking(params)`，Python使用`order_tracking(**params)`。只返回当前客户订单已保存的`events`，包括时间、地点、原始描述、运单号、system/manual来源、is_forecast、has_time及recorded_at。没有数据返回空数组，不实时查询或触发抓取；预计节点不能当作已经发生。时间不推断时区，入库时间不是承运商查询时间。

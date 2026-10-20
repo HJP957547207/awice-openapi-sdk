@@ -10,6 +10,9 @@ Official SDKs for the Awice (5688.cn) international logistics rate API. Query li
 - Docs: <https://www.5688.cn/open/docs/start>
 - Console: <https://www.5688.cn/user/openapi>
 
+- [Postman collection (including all 9 order endpoints)](./postman/awice-openapi.postman_collection.json): import and set your own app credentials. Create, update and void requests affect real orders.
+- Current source version: **1.1.0**. See the [changelog](./CHANGELOG.md).
+
 ## Why use the SDK
 
 - **Single file, zero dependencies.** PHP needs curl (PHP 7.1+); Python uses the standard library (3.7+); Java uses JDK libraries (11+, including 17 and 21). Copy one file into your project; no Composer, pip or Maven dependency required.
@@ -71,6 +74,36 @@ System.out.println(AwiceClient.Json.stringify(res.getData()));
 
 [Java setup, responses and errors](./java/README.en.md). Java returns ApiResponse with the full envelope; PHP/Python single-file clients return data directly.
 
+## FCL surcharges: per container and per bill
+
+`list[].surcharges[]` is returned unchanged, including `code`, `name`, `name_en`, `20GP`, `40GP`, `40HQ`, `currency`, `remark`, the billing basis `charge_unit`, and the per-bill amount `singleprice`. The SDK does not combine fees or calculate order receivables.
+
+Let `C = 20GP rate × 20GP count + 40GP rate × 40GP count + 40HQ rate × 40HQ count`:
+
+| charge_unit | Billing basis | Amount for one bill |
+| --- | --- | --- |
+| `CONTAINER` | Per container | `C` |
+| `BILL` | Per bill | `singleprice` once; ignore legacy container amounts |
+| `MIXED` | Containers plus a bill fee | `C + singleprice`, with the bill portion counted once |
+| `UNKNOWN` / missing / unrecognized | Unclear | Stop automatic calculation and confirm the basis |
+
+Illustrative amounts, not a current quotation:
+
+```json
+[
+  {"code":"DOC","name":"文件费","name_en":"Documentation Fee","20GP":450,"40GP":450,"40HQ":450,"currency":"CNY","remark":"","charge_unit":"BILL","singleprice":450},
+  {"code":"THC","name":"码头费","name_en":"Terminal Handling Charge","20GP":908,"40GP":1362,"40HQ":1362,"currency":"CNY","remark":"","charge_unit":"CONTAINER","singleprice":0}
+]
+```
+
+For two 20GP containers, DOC is 450 CNY and THC is 1816 CNY, totaling 2266 CNY for these two fees. Legacy per-bill fees can repeat the same amount in all three container fields: do not multiply them by the container count. Equal container amounts alone do not establish the billing basis.
+
+Group totals by `currency`. `prices` contains USD ocean freight separately from surcharges; do not add CNY or other currencies directly to it. An absent fee does not mean it is free, and the response may not cover every destination charge.
+
+PHP/Python single-file clients return `result["list"]` directly. Java exposes `list` through `response.getData()` (Map / List, with BigDecimal amounts). The PHP/Python directory packages under the website download folder return the full envelope: use `result["data"]["list"]`.
+
+[Complete FCL fields and coverage](https://www.5688.cn/en/open/docs/fcl)
+
 ## Endpoints
 
 Available endpoints: **Anything not listed here does not exist.**
@@ -92,7 +125,7 @@ Available endpoints: **Anything not listed here does not exist.**
 | `popular()` | `GET /openapi/v1/dict/popular` | Common subset, for populating dropdowns |
 | `ping()` | `ANY /openapi/v1/ping` | Connectivity check, not billed |
 
-> There are currently **no** endpoints for vessel space, cargo tracking or invoices. Four order types and own-order details are documented below. Contact us if you need additional endpoints.
+> Vessel space and arbitrary-number cargo tracking are not available. Four order types, own-order details including approved receivables, and saved tracking events for your own orders are documented below.
 
 ## Specifying ports
 
@@ -214,6 +247,9 @@ and rate limiting. Submission creates a real order awaiting operational processi
 | createFbaOrder($payload) | create_fba_order(**payload) | createFbaOrder(payload) | POST /orders/fba/create |
 | orderOptions(['order_type'=>'ocean']) | order_options(order_type="ocean") | orderOptions(Map.of("order_type", "ocean")) | GET /orders/options |
 | orderDetail(['order_type'=>'ocean','client_order_no'=>'MY-ORDER-001']) | order_detail(order_type="ocean", client_order_no="MY-ORDER-001") | orderDetail(params) | POST /orders/detail |
+| orderTracking(params) | order_tracking(**params) | orderTracking(params) | POST /orders/tracking |
+| updateOrder(params) | update_order(**params) | updateOrder(params) | POST /orders/update |
+| cancelOrder(params) | cancel_order(**params) | cancelOrder(params) | POST /orders/cancel |
 
 Fetch options before filling a payload. Ocean orders use the internal port
 dictionary code, while air orders use airport IATA codes. Contacts may be your
@@ -230,3 +266,15 @@ The PHP/Python single-file SDKs return data directly. Java returns ApiResponse,
 with getData() / getEnvelope() for data or the complete response. PHP/Python
 packaged SDKs return the full envelope. This source update does not publish a
 new package to public registries.
+
+### Order updates and cancellation
+
+Both endpoints are free (0 credits) and accept order_type plus client_order_no or order_no. update accepts a non-empty changes object; omitted fields/records are retained, supplied objects/lists replace the full value. Only pending (0) or forecast (1) orders can be updated. Only pending (0) orders can be cancelled; cancellation marks the order void (7). Repeating an identical update or cancellation returns replayed=true. Invalid order states return HTTP409 / code1004. The original create request remains replayable after updates; it never overwrites the edited order.
+
+### Order detail bills
+
+orderDetail / order_detail now returns data.bills: only approved/written-off receivable leaves issued to the current customer, after checking order ownership. Other customers’ bills, payables, drafts, reversed bills, and split parent/intermediate bills are excluded. Each bill includes its reference, bill/payment status, totals by original currency, reference CNY total, and customer quote details. Split children retain their own amount; parent details are shown only for an approved receivable parent of the same order and payer with matching amounts. No visible bills returns an empty list. Internal notes, preparers, suppliers, and parent identifiers are omitted. Existing SDK detail methods retain the new field automatically.
+
+### Own-order tracking
+
+POST `/api/openapi/v1/orders/tracking` costs 0 credits. Use the same selectors as details: `order_type` and `client_order_no` or `order_no` (external reference takes precedence). PHP/Java: `orderTracking(params)`; Python: `order_tracking(**params)`. Only saved events for your own order are returned, with time, place, original description, tracking_no, system/manual source, is_forecast, has_time and recorded_at. An empty list means no saved events. No live carrier request or collection is initiated. Forecasts are not completed events. No time zone is inferred; recorded_at is storage time, not a carrier query time.

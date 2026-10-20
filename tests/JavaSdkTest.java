@@ -8,6 +8,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -31,7 +33,8 @@ public class JavaSdkTest {
     private static final List<Captured> captured = Collections.synchronizedList(new ArrayList<>());
     private static final AtomicReference<Throwable> serverFailure = new AtomicReference<>();
     private static final String SUCCESS = "{\"code\":0,\"msg\":\"OK\",\"request_id\":\"TEST_ID\","
-            + "\"credit_used\":0,\"data\":{\"price\":12.30,\"missing\":null,\"legs\":[]}}";
+            + "\"credit_used\":0,\"data\":{\"price\":12.30,\"missing\":null,\"legs\":[],"
+            + "\"bills\":[{\"bill_code\":\"OWN_BILL\",\"total_by_currency\":{\"USD\":100.25,\"CNY\":30},\"quotes\":[]}]}}";
 
     public static void main(String[] args) throws Exception {
         jsonChecks();
@@ -45,6 +48,7 @@ public class JavaSdkTest {
         try {
             AwiceClient client = new AwiceClient("TEST_KEY", "TEST_SECRET", base, Duration.ofSeconds(3), 2);
             endpointChecks(client);
+            fclSurchargeChecks(client);
             errorAndRetryChecks(client, base);
             check(serverFailure.get() == null, "Mock server signature/body checks: " + serverFailure.get());
             check(replies.isEmpty(), "All mock replies consumed");
@@ -73,7 +77,7 @@ public class JavaSdkTest {
                 "freight/fcl/search", "freight/lcl/search", "freight/air/search", "freight/express/search",
                 "freight/fba/search", "schedule/search", "schedule/detail", "orders/ocean/create",
                 "orders/air/create", "orders/express/create", "orders/fba/create", "orders/options",
-                "orders/detail", "dict/port", "dict/airport", "dict/carrier", "dict/airline",
+                "orders/detail", "orders/tracking", "orders/update", "orders/cancel", "dict/port", "dict/airport", "dict/carrier", "dict/airline",
                 "dict/country", "dict/popular", "ping");
         for (int i = 0; i < expected.size(); i++) replies.add(new Reply(200, SUCCESS, null));
         client.fcl(payload); client.lcl(payload); client.air(payload); client.express(payload); client.fba(payload);
@@ -82,7 +86,12 @@ public class JavaSdkTest {
         client.createExpressOrder(payload); client.createFbaOrder(payload);
         Map<String, Object> query = new LinkedHashMap<>();
         query.put("keyword", "上海 A&B+港"); query.put("page", 2); query.put("optional", null);
-        client.orderOptions(query); client.orderDetail(payload);
+        client.orderOptions(query);
+        AwiceClient.ApiResponse detail = client.orderDetail(payload);
+        Map<?, ?> detailData = (Map<?, ?>) detail.getData();
+        Map<?, ?> detailBill = (Map<?, ?>) ((List<?>) detailData.get("bills")).get(0);
+        check(new BigDecimal("100.25").equals(((Map<?, ?>) detailBill.get("total_by_currency")).get("USD")), "Order bill data and decimal precision retained");
+        client.orderTracking(payload); client.updateOrder(payload); client.cancelOrder(payload);
         client.ports(query); client.airports(query); client.carriers(query);
         client.airlines(query); client.countries(query); client.popular(query);
         AwiceClient.ApiResponse result = client.ping();
@@ -102,6 +111,25 @@ public class JavaSdkTest {
             }
         }
         check(new HashSet<>(nonces(0)).size() == expected.size(), "Every endpoint has a unique nonce");
+    }
+
+    private static void fclSurchargeChecks(AwiceClient client) throws Exception {
+        String fixture = Files.readString(Path.of("tests", "fixtures", "fcl-surcharges.json"), StandardCharsets.UTF_8);
+        replies.add(new Reply(200, fixture, null));
+        AwiceClient.ApiResponse response = client.fcl(Map.of("pol", "CNSHA", "pod", "USLAX"));
+        check(response.getEnvelope().equals(AwiceClient.Json.parse(fixture)), "Complete FCL response preserved");
+        Map<?, ?> data = (Map<?, ?>) response.getData();
+        List<?> rows = (List<?>) data.get("list");
+        List<?> fees = (List<?>) ((Map<?, ?>) rows.get(0)).get("surcharges");
+        List<String> units = Arrays.asList("BILL", "CONTAINER", "MIXED", "UNKNOWN", "CONTAINER");
+        for (int i = 0; i < units.size(); i++) {
+            Map<?, ?> fee = (Map<?, ?>) fees.get(i);
+            check(units.get(i).equals(fee.get("charge_unit")) && fee.size() == 10, "All surcharge fields and unit retained");
+        }
+        check(new BigDecimal("450").equals(((Map<?, ?>) fees.get(0)).get("singleprice")), "Per-bill amount retained");
+        check(new BigDecimal("30.25").equals(((Map<?, ?>) fees.get(2)).get("singleprice"))
+                && new BigDecimal("12.3").equals(((Map<?, ?>) fees.get(2)).get("20GP")), "Mixed decimal amounts retained");
+        check(((List<?>) ((Map<?, ?>) rows.get(1)).get("surcharges")).isEmpty(), "Empty surcharges preserved");
     }
 
     private static void errorAndRetryChecks(AwiceClient client, String base) throws Exception {

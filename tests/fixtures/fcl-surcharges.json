@@ -1,0 +1,20 @@
+{
+  "code": 0,
+  "msg": "Offline fixture: illustrative amounts, not a live quotation",
+  "credit_used": 1,
+  "data": {
+    "list": [
+      {
+        "prices": {"20GP": 1880, "40GP": 2110, "40HQ": 2110, "currency": "USD"},
+        "surcharges": [
+          {"code": "DOC", "name": "文件费", "name_en": "Documentation Fee", "20GP": 450, "40GP": 450, "40HQ": 450, "currency": "CNY", "remark": "Legacy duplicated box amounts", "charge_unit": "BILL", "singleprice": 450},
+          {"code": "THC", "name": "码头费", "name_en": "Terminal Handling Charge", "20GP": 908, "40GP": 1362, "40HQ": 1362, "currency": "CNY", "remark": "", "charge_unit": "CONTAINER", "singleprice": 0},
+          {"code": "MIX", "name": "混合费用", "name_en": "Mixed fee", "20GP": 12.3, "40GP": 20, "40HQ": 20, "currency": "USD", "remark": "Illustrative mixed fee", "charge_unit": "MIXED", "singleprice": 30.25},
+          {"code": "CHECK", "name": "待确认", "name_en": "Confirm basis", "20GP": 15, "40GP": 15, "40HQ": 15, "currency": "CNY", "remark": "Do not infer basis from equal amounts", "charge_unit": "UNKNOWN", "singleprice": 0},
+          {"code": "ZERO", "name": "零金额", "name_en": "Zero amount", "20GP": 0, "40GP": 0, "40HQ": 0, "currency": "CNY", "remark": "", "charge_unit": "CONTAINER", "singleprice": 0}
+        ]
+      },
+      {"prices": {"20GP": 1, "currency": "USD"}, "surcharges": []}
+    ]
+  }
+}

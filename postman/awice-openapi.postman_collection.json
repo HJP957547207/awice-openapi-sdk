@@ -1,0 +1,751 @@
+{
+  "info": {
+    "_postman_id": "5688-awice-openapi-v1",
+    "name": "5688 物流巴巴开放平台 OpenAPI v1",
+    "description": "5688 物流巴巴开放平台官方 Postman 集合。\n\n## 使用方法\n\n1. 打开「Variables」（集合右侧 ⋯ → Edit），把 `app_key` 和 `app_secret` 改成你的应用凭证（控制台「应用管理」获取）\n2. 任意接口点 Send，Pre-request Script 会自动算好签名挂到 header 上\n3. 生产环境请把 `base_url` 改成 `https://www.5688.cn/api/openapi/v1`\n\n## 签名细节\n\n- 算法：HMAC-SHA256\n- 消息：`METHOD\\nPATH\\nTimestamp\\nNonce\\nMD5(BODY)`\n- PATH 取 `/openapi/v1/<endpoint>`（去掉 base_url 的 `/api` 部分）\n\n详见 https://www.5688.cn/open/docs/auth",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "awice-team"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 全局预请求脚本：自动算签名挂到 header",
+          "// 与服务端 OpenApiSign 保持完全一致：",
+          "//   HMAC-SHA256(secret, METHOD + \\n + PATH + \\n + Timestamp + \\n + Nonce + \\n + MD5(BODY))",
+          "",
+          "const appKey = pm.collectionVariables.get('app_key');",
+          "const appSecret = pm.collectionVariables.get('app_secret');",
+          "",
+          "if (!appKey || !appSecret || appKey === 'AK_REPLACE_ME' || appSecret === 'REPLACE_ME') {",
+          "    console.warn('[Awice] 请先在集合 Variables 里设置 app_key / app_secret');",
+          "}",
+          "",
+          "const ts = Math.floor(Date.now() / 1000).toString();",
+          "// 16 字符随机 nonce",
+          "const nonceBytes = new Array(8).fill(0).map(() => Math.floor(Math.random() * 256));",
+          "const nonce = nonceBytes.map(b => b.toString(16).padStart(2, '0')).join('');",
+          "",
+          "// 拿 PATH —— 必须是 /openapi/v1/xxx 形式",
+          "const url = pm.request.url;",
+          "const pathArr = url.path || [];",
+          "let pathname = '/' + pathArr.join('/');",
+          "// base_url 里没有 /openapi/v1 时，path 就是 /openapi/v1/xxx，直接用",
+          "// base_url 里已经有 /openapi/v1 时，path 就只是 /xxx，需要补",
+          "const signPath = pathname.indexOf('/openapi/v1') === 0 ? pathname : '/openapi/v1' + pathname;",
+          "",
+          "const method = pm.request.method.toUpperCase();",
+          "let body = '';",
+          "if (method === 'POST' && pm.request.body && pm.request.body.raw) {",
+          "    body = pm.variables.replaceIn(pm.request.body.raw);",
+          "}",
+          "const bodyMd5 = CryptoJS.MD5(body).toString();",
+          "const message = method + '\\n' + signPath + '\\n' + ts + '\\n' + nonce + '\\n' + bodyMd5;",
+          "const sign = CryptoJS.HmacSHA256(message, appSecret).toString();",
+          "",
+          "pm.request.headers.upsert({ key: 'Content-Type', value: 'application/json' });",
+          "pm.request.headers.upsert({ key: 'X-Awice-AppKey', value: appKey });",
+          "pm.request.headers.upsert({ key: 'X-Awice-Timestamp', value: ts });",
+          "pm.request.headers.upsert({ key: 'X-Awice-Nonce', value: nonce });",
+          "pm.request.headers.upsert({ key: 'X-Awice-Signature', value: sign });",
+          "",
+          "console.log('[Awice] sign_path=' + signPath + ' nonce=' + nonce + ' ts=' + ts);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 全局响应断言：业务 code 必须为 0",
+          "pm.test('HTTP 200', function () {",
+          "    pm.response.to.have.status(200);",
+          "});",
+          "pm.test('Body has code=0', function () {",
+          "    const json = pm.response.json();",
+          "    pm.expect(json.code).to.eql(0);",
+          "});",
+          "// 把 request_id 打到 console 便于排查",
+          "try {",
+          "    const json = pm.response.json();",
+          "    if (json.request_id) console.log('[Awice] request_id=' + json.request_id);",
+          "    if (json.code !== 0) console.error('[Awice] biz_error code=' + json.code + ' msg=' + json.msg);",
+          "} catch (e) {}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://www.5688.cn/api/openapi/v1",
+      "type": "string",
+      "description": "API 入口；联调时可改为 staging/本地"
+    },
+    {
+      "key": "app_key",
+      "value": "AK_REPLACE_ME",
+      "type": "string",
+      "description": "控制台「应用管理」获取，形如 AK_xxxxxx"
+    },
+    {
+      "key": "app_secret",
+      "value": "REPLACE_ME",
+      "type": "string",
+      "description": "控制台「应用管理」获取的 AppSecret；不要分享 Collection 文件时连此值一起分享"
+    },
+    {
+      "key": "schedule_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "连通性测试 Ping",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/ping",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "ping"
+          ]
+        },
+        "description": "签名健康检查，不计配额。返回 200 + code=0 即配置正确。"
+      },
+      "response": []
+    },
+    {
+      "name": "海运整柜 FCL",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pol\":\"CNSHA\",\"pod\":\"USLAX\",\"carrier\":\"MSK\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/freight/fcl/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "freight",
+            "fcl",
+            "search"
+          ]
+        },
+        "description": "海运整柜运价查询。必填 pol/pod（5 字代码），可选 carrier、container_type、etd 等。"
+      },
+      "response": []
+    },
+    {
+      "name": "海运拼箱 LCL",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pol\":\"CNSHA\",\"pod\":\"USLAX\",\"weight\":1500,\"volume\":3.5}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/freight/lcl/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "freight",
+            "lcl",
+            "search"
+          ]
+        },
+        "description": "海运拼箱运价查询。必填 pol/pod，建议附 weight(kg) 和 volume(cbm) 取精确计费。"
+      },
+      "response": []
+    },
+    {
+      "name": "空运 Air",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"origin\":\"PVG\",\"destination\":\"LAX\",\"weight\":100}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/freight/air/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "freight",
+            "air",
+            "search"
+          ]
+        },
+        "description": "空运运价查询。origin/destination 是 3 字机场代码（如 PVG、LAX），weight 以 kg 为单位。"
+      },
+      "response": []
+    },
+    {
+      "name": "国际快递 Express",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"country\":\"US\",\"weight\":10,\"length\":40,\"width\":30,\"height\":20}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/freight/express/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "freight",
+            "express",
+            "search"
+          ]
+        },
+        "description": "国际快递查价。country 为 2 字国家代码，weight 以 kg 为单位，长宽高单位 cm。"
+      },
+      "response": []
+    },
+    {
+      "name": "字典 - 海港",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/dict/port?keyword=shanghai&page=1&limit=20",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "dict",
+            "port"
+          ],
+          "query": [
+            {
+              "key": "keyword",
+              "value": "shanghai"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "description": "海港字典，5 字代码（CNSHA）。免费不计配额。"
+      },
+      "response": []
+    },
+    {
+      "name": "字典 - 机场",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/dict/airport?keyword=pvg&page=1&limit=20",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "dict",
+            "airport"
+          ],
+          "query": [
+            {
+              "key": "keyword",
+              "value": "pvg"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "description": "机场字典，3 字代码（PVG）。免费不计配额。"
+      },
+      "response": []
+    },
+    {
+      "name": "字典 - 船公司",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/dict/carrier?keyword=msk&page=1&limit=20",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "dict",
+            "carrier"
+          ],
+          "query": [
+            {
+              "key": "keyword",
+              "value": "msk"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "description": "船公司字典（MSK / MSC / COSCO 等）。免费不计配额。"
+      },
+      "response": []
+    },
+    {
+      "name": "字典 - 航司",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/dict/airline?keyword=ca&page=1&limit=20",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "dict",
+            "airline"
+          ],
+          "query": [
+            {
+              "key": "keyword",
+              "value": "ca"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "description": "航司字典，2 字代码（CA / MU 等）。免费不计配额。"
+      },
+      "response": []
+    },
+    {
+      "name": "字典 - 国家",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/dict/country?keyword=us&page=1&limit=20",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "dict",
+            "country"
+          ],
+          "query": [
+            {
+              "key": "keyword",
+              "value": "us"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "description": "国家字典。免费不计配额。"
+      },
+      "response": []
+    },
+    {
+      "name": "船期查询",
+      "item": [
+        {
+          "name": "港口对船期",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pol\": \"CNSZX\",\n  \"pod\": \"USLAX\",\n  \"carrier\": \"COSCO\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/schedule/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "schedule",
+                "search"
+              ]
+            },
+            "description": "船期查询，有结果每次调用计费，最多50条；空结果免费。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "const rows = response.code === 0 && response.data ? response.data.data : [];",
+                  "if (Array.isArray(rows) && rows.length && rows[0].schedule_id) {",
+                  "  pm.collectionVariables.set('schedule_id', rows[0].schedule_id);",
+                  "} else {",
+                  "  pm.collectionVariables.unset('schedule_id');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "船期详情 Schedule Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule_id\": \"{{schedule_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/schedule/detail",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "schedule",
+                "detail"
+              ]
+            },
+            "description": "先使用同一应用调用船期查询，自动保存首条 schedule_id；再获取该航次详情，默认不重复扣费。详情查无返回 data=[]；标识不能跨应用使用。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "物流下单（免费；提交会生成真实订单）",
+      "item": [
+        {
+          "name": "海运（整箱 / 拼箱）下单",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_order_no\": \"MY-ORDER-001\",\n  \"goods_type\": \"YOUR_GOODS_TYPE\",\n  \"goods_pcs\": 2,\n  \"goods_pcs_unit\": \"CTN\",\n  \"goods_weight\": 20,\n  \"goods_cbm\": 0.5,\n  \"custom\": {\n    \"custom\": 0\n  },\n  \"insurance\": {\n    \"is_buy\": 0\n  },\n  \"pol\": \"CNSHA\",\n  \"pod\": \"USLSA\",\n  \"transport_type\": \"fcl\",\n  \"shipping_mode\": \"CY-CY\",\n  \"goods\": \"General cargo\",\n  \"goods_marks\": \"MY-MARKS\",\n  \"sender\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"consignee\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"notifier\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"packing\": [\n    {\n      \"ctt\": \"20GP\",\n      \"ctn_num\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/ocean/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "ocean",
+                "create"
+              ]
+            },
+            "description": "请先取下单选项并替换所有占位参数；使用实际已实名客户；重试保持 client_order_no 和参数一致。"
+          },
+          "response": []
+        },
+        {
+          "name": "空运下单",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_order_no\": \"MY-ORDER-001\",\n  \"goods_type\": \"YOUR_GOODS_TYPE\",\n  \"goods_pcs\": 2,\n  \"goods_pcs_unit\": \"CTN\",\n  \"goods_weight\": 20,\n  \"goods_cbm\": 0.5,\n  \"custom\": {\n    \"custom\": 0\n  },\n  \"insurance\": {\n    \"is_buy\": 0\n  },\n  \"pol\": \"PVG\",\n  \"pod\": \"LAX\",\n  \"goods\": \"General cargo\",\n  \"sender\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"consignee\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"notifier\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"goods_list\": [\n    {\n      \"goods_packing\": \"CTN\",\n      \"goods_pcs\": 2,\n      \"goods_weight\": 20,\n      \"goods_length\": 50,\n      \"goods_width\": 50,\n      \"goods_height\": 100\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/air/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "air",
+                "create"
+              ]
+            },
+            "description": "请先取下单选项并替换所有占位参数；使用实际已实名客户；重试保持 client_order_no 和参数一致。"
+          },
+          "response": []
+        },
+        {
+          "name": "快递下单",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_order_no\": \"MY-ORDER-001\",\n  \"goods_type\": \"YOUR_GOODS_TYPE\",\n  \"goods_pcs\": 2,\n  \"goods_pcs_unit\": \"CTN\",\n  \"goods_weight\": 20,\n  \"goods_cbm\": 0.5,\n  \"custom\": {\n    \"custom\": 0\n  },\n  \"insurance\": {\n    \"is_buy\": 0\n  },\n  \"place_country\": \"US\",\n  \"channel\": \"YOUR_EXP_CHANNEL\",\n  \"consignee\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"notifier\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"goods\": [\n    {\n      \"goods_chs\": \"示例商品\",\n      \"goods_en\": \"Sample goods\",\n      \"goods_pcs\": 2,\n      \"goods_price\": 10,\n      \"goods_cost\": 20\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/express/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "express",
+                "create"
+              ]
+            },
+            "description": "请先取下单选项并替换所有占位参数；使用实际已实名客户；重试保持 client_order_no 和参数一致。"
+          },
+          "response": []
+        },
+        {
+          "name": "FBA / 专线下单",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_order_no\": \"MY-ORDER-001\",\n  \"goods_type\": \"YOUR_GOODS_TYPE\",\n  \"goods_pcs\": 2,\n  \"goods_pcs_unit\": \"CTN\",\n  \"goods_weight\": 20,\n  \"goods_cbm\": 0.5,\n  \"custom\": {\n    \"custom\": 0\n  },\n  \"insurance\": {\n    \"is_buy\": 0\n  },\n  \"pod\": \"US\",\n  \"channel\": \"YOUR_FBA_CHANNEL\",\n  \"fba_type\": 0,\n  \"transport\": 0,\n  \"fba\": \"ONT8\",\n  \"shipment_id\": \"YOUR_SHIPMENT_ID\",\n  \"amazon_reference_id\": \"YOUR_AMAZON_REFERENCE\",\n  \"sender\": {\n    \"company\": \"Example Company\",\n    \"contact\": \"Contact Name\",\n    \"tel\": \"+1-555-0100\",\n    \"address\": \"Replace with actual address\"\n  },\n  \"goods\": [\n    {\n      \"sku_no\": \"SKU-001\",\n      \"sku_packing\": \"CTN\",\n      \"sku_ctns\": 2,\n      \"sku_pcs\": 10,\n      \"sku_gw\": 10,\n      \"sku_nw\": 9\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/fba/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "fba",
+                "create"
+              ]
+            },
+            "description": "请先取下单选项并替换所有占位参数；使用实际已实名客户；重试保持 client_order_no 和参数一致。"
+          },
+          "response": []
+        },
+        {
+          "name": "下单选项",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/options?order_type=ocean",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "options"
+              ],
+              "query": [
+                {
+                  "key": "order_type",
+                  "value": "ocean"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "订单详情",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/detail",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "detail"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"order_type\": \"ocean\", \"client_order_no\": \"MY-ORDER-001\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Order tracking / 本人订单轨迹（0积分）",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/tracking",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "tracking"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"order_type\": \"ocean\", \"client_order_no\": \"MY-ORDER-001\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Saved system/manual events for your own order. Same selectors as order details. No live carrier query. 0 credits."
+          },
+          "response": []
+        },
+        {
+          "name": "修改本人订单",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/update",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "update"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_type\": \"ocean\",\n  \"client_order_no\": \"MY-ORDER-001\",\n  \"changes\": {\n    \"note\": \"Updated shipping instructions\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "0积分；仅本人待确认/预报订单可修改，changes未传字段保留。"
+          },
+          "response": []
+        },
+        {
+          "name": "取消本人订单（作废）",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_type\": \"ocean\",\n  \"client_order_no\": \"MY-ORDER-001\",\n  \"reason\": \"Shipment no longer needed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "0积分；仅本人待确认订单可取消，取消后status=7作废。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

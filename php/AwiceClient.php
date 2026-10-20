@@ -46,7 +46,7 @@ class AwiceTransportException extends \Exception
 
 class AwiceClient
 {
-    const VERSION = '1.0.0';
+    const VERSION = '1.1.0';
 
     /** 默认网关。私有化部署改这里 */
     const DEFAULT_BASE_URL = 'https://www.5688.cn/api';
@@ -104,6 +104,7 @@ class AwiceClient
 
     /**
      * 海运整柜 FCL 运价
+     * list[].surcharges 原样保留 charge_unit / singleprice：按票仅计一次，按箱乘箱数，详见 README。
      *
      * @param array $params pol 起运港(必填) / pod 目的港(必填) / carrier 船公司(可选)
      *                      / page 页码 / limit 每页(最大50)
@@ -188,9 +189,27 @@ class AwiceClient
         return $this->post('/openapi/v1/orders/detail', $params);
     }
 
+    /** 本人订单已保存轨迹，参数与orderDetail一致，0积分。 */
+    public function orderTracking(array $params = [])
+    {
+        return $this->post('/openapi/v1/orders/tracking', $params);
+    }
+
     public function orderOptions(array $params = [])
     {
         return $this->get('/openapi/v1/orders/options', $params);
+    }
+
+    /** 本人待确认/预报订单，changes 仅提交需要修改的字段。 */
+    public function updateOrder(array $params)
+    {
+        return $this->post('/openapi/v1/orders/update', $params);
+    }
+
+    /** 本人待确认订单作废；已作废重试返回原结果。 */
+    public function cancelOrder(array $params)
+    {
+        return $this->post('/openapi/v1/orders/cancel', $params);
     }
 
     /** 港口字典。keyword 模糊搜索，返回 code / 中英文名 / 国家 */
